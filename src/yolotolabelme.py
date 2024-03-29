@@ -1,6 +1,8 @@
 import os
 import json
 import argparse
+from PIL import Image
+
 
 def load_class_mapping(mapping_file):
     class_mapping = {}
@@ -11,8 +13,16 @@ def load_class_mapping(mapping_file):
             class_mapping[index] = class_name
     return class_mapping
 
-def convert_yolo_to_labelme(yolo_annotation_dir, labelme_output_dir, image_width, image_height, class_mapping, img_ext):
+
+def convert_yolo_to_labelme(yolo_annotation_dir, labelme_output_dir, class_mapping, img_ext, prefix_dir, version):
+    """Convert YOLO annotations to LabelMe JSON format.
+
+    :param prefix_dir: Prefix directory to be added to the image path in the LabelMe JSON file, 
+                       useful to later merge back with dataset and open in labelme. 
+    """
     os.makedirs(labelme_output_dir, exist_ok=True)
+    if not img_ext.startswith("."):
+        img_ext = "." + img_ext
 
     # Iterate through YOLO(txt format) annotation files
     for yolo_annotation_file in os.listdir(yolo_annotation_dir):
@@ -21,6 +31,10 @@ def convert_yolo_to_labelme(yolo_annotation_dir, labelme_output_dir, image_width
                 yolo_annotations = yolo_file.readlines()
 
             labelme_shapes = []
+
+            # get original image size to properly map coordinates from relative to absolute pixels
+            image_path = os.path.join("..", prefix_dir, yolo_annotation_file.replace('.txt', img_ext))
+            image_width, image_height = Image.open(os.path.join(yolo_annotation_dir, image_path)).size
 
             for yolo_annotation in yolo_annotations:
                 annotation_parts = yolo_annotation.strip().split()
@@ -63,10 +77,10 @@ def convert_yolo_to_labelme(yolo_annotation_dir, labelme_output_dir, image_width
 
             # Create LabelMe JSON structure
             labelme_data = {
-                'version': '4.5.9',
+                'version': version,
                 'flags': {},
                 'shapes': labelme_shapes,
-                'imagePath': yolo_annotation_file.replace('.txt', img_ext),  # image filename
+                'imagePath': image_path,  # image filename
                 'imageData': None,
                 'imageHeight': image_height,  # image height
                 'imageWidth': image_width,   # image width
@@ -84,10 +98,12 @@ def main():
     # Adding arguments
     parser.add_argument("--yolo", required=True, help="Path to the YOLO-annotation(TXT) directory.")
     parser.add_argument("--labelme", required=False, default= 'results', help="Path to the LabelMe-output(JSON) directory.")
-    parser.add_argument("--width", type=int, required=False, default= 1024, help="Width of the images")
+    parser.add_argument("--width", type=int, required=False, default= 1920, help="Width of the images")
     parser.add_argument("--height", type=int, required=False, default= 1024, help="Height of the images")
     parser.add_argument("--classes", required=True, help="Path to the classes file (TXT format).")
     parser.add_argument("--img_ext", required=False, default=".jpg", help="Image file extension (e.g., .jpg, .png, etc.)")
+    parser.add_argument("--prefix_dir", required=False, default="", help="Prefix directory for LabelMe JSON file.")
+    parser.add_argument("--version", required=False, default="5.4.1", help="LabelMe version")
     
     args = parser.parse_args()
     
@@ -95,14 +111,12 @@ def main():
     if not os.path.exists(args.labelme):
         os.makedirs(args.labelme)
     
-    
     class_mapping = load_class_mapping(args.classes)
     
-    
-    convert_yolo_to_labelme(args.yolo, args.labelme, args.width, args.height, class_mapping, args.img_ext)
-
+    convert_yolo_to_labelme(args.yolo, args.labelme, class_mapping, args.img_ext, args.prefix_dir, args.version)
 
     print("-------------------------Conversion completed------------------------------")
-    
+
+
 if __name__ == '__main__':
     main()
